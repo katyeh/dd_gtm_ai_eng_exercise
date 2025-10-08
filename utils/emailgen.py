@@ -1,4 +1,3 @@
-# utils/emailgen.py
 from __future__ import annotations
 import os, json, re, asyncio
 from tenacity import retry, stop_after_attempt, wait_exponential, wait_random
@@ -6,7 +5,7 @@ from openai import AsyncOpenAI
 from .models import Speaker, EmailDraft, CompanyCategory
 
 SYSTEM = """
-You are a senior construction GTM copywriter (UK English). Write concise, high-signal outbound for DCW speakers.
+You are a senior construction GTM copywriter. Write concise, high-signal outbound for DCW speakers.
 
 CONTEXT
 - Booth: #42
@@ -131,7 +130,7 @@ class Emailer:
         sys = (
             SYSTEM
             .replace("{category}", category_value)
-            .replace("{specific_detail}", specific_detail)
+            .replace("{hook}", specific_detail)
         )
         payload = json.dumps({
             "name": sp.name,

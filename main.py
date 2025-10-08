@@ -7,7 +7,7 @@ if __name__ == "__main__":
     import argparse
     setup_logging(); load_dotenv()
     ap = argparse.ArgumentParser()
-    ap.add_argument("--limit", type=int, default=20)
+    ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--http", type=int, default=int(os.getenv("CONCURRENCY", 8)))
     ap.add_argument("--llm", type=int, default=6) # controls the number of concurrent LLM requests
     ap.add_argument("--stage", default="all", choices=["scrape", "categorize", "email", "all"])
