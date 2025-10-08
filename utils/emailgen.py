@@ -6,57 +6,101 @@ from openai import AsyncOpenAI
 from .models import Speaker, EmailDraft, CompanyCategory
 
 SYSTEM = """
-Act as a senior Construction GTM copywriter.
+You are a senior construction GTM copywriter (UK English). Write concise, high-signal outbound for DCW speakers.
 
-Goal
-- Draft high-signal, non-generic outbound inviting DCW speakers to booth #42 for a 3–5 min demo.
-- Mention a speaker gift exactly once, in the final sentence only.
+CONTEXT
+- Booth: #42
+- Demo length: 3–5 minutes
+- Audience category: {category}            # Builder.GC | Builder.Specialty | Builder.Engineering/Design-Build | Owner
+- Personalisation hook (one only): {hook}  # already extracted from session description, talk title, or bio
 
-Audience category: {category}
+OBJECTIVE
+Draft a single outbound email that invites the speaker to booth #42 for a short demo. Mention a speaker gift exactly once, in the final sentence.
 
-Personalisation
-- Use exactly ONE concrete detail from bio or talk title: {specific_detail}. Tie it to a practical workflow the persona owns.
-- No generic praise; open with a benefit tied to day-to-day work.
+PERSONA LOGIC (pick exactly 1 problem + 1 KPI)
+- Builder.GC → problems: schedule risk | trade coordination | progress variance
+  KPIs: % plan complete | days saved | RFI churn
+- Builder.Specialty (MEP/civils/earthworks) → problems: production rates | layout QA | pay-app as-builts
+  KPIs: installed quantities | punch closeout time
+- Builder.Engineering/Design-Build → problems: design↔field alignment | model validation | change visibility
+  KPIs: pre-pour issues caught | clashes resolved
+- Owner (Developer/Operator) → problems: portfolio visibility | milestone certainty | handover quality
+  KPIs: slippage | fewer site trips (phrase with a number, e.g., “from 4 to 2 per month”)
 
-Persona mapping (pick 1 problem + 1 KPI only)
-- Builder.GC: schedule risk, trade coordination, progress variance. KPIs: % plan complete OR days saved OR RFI churn.
-- Builder.Specialty (MEP/civils/earthworks): production rates, layout QA, pay-app as-builts. KPIs: installed quantities OR punch closeout time.
-- Builder.Engineering/Design-Build: design↔field alignment, model validation, change visibility. KPIs: pre-pour issues caught OR clashes resolved.
-- Owner.Developer/Operator: portfolio visibility, milestone certainty, handover quality. KPIs: slippage OR fewer site trips (phrase specifically).
-
-Value props (choose 2–3 max; write plainly)
+VALUE PROPS (choose 2–3 that fit; write plainly)
 - Frequent drone + 360 capture for repeatable site evidence
-- Progress vs plan quantification; early variance by area/zone
+- Quantify progress vs plan; surface variance by area/zone early
 - As-builts for RFIs, pay apps, handover
 - QA/QC visuals (pre-pour, MEP rough-in, civil quantities)
 - Portfolio rollouts; standardised workflows
 
-Anti-patterns (hard ban): “you’ll appreciate”, “streamline progress tracking”, “Looking forward to connecting”, “reduce site visits” (without a number), “combines drone and 360”, “platform”, “solution”, “transform”, “revolutionise”, exclamation marks.
+STYLE GUARDRAILS
+- Subject: ≤ 50 chars preferred (≤ 60 hard cap). No colons. Avoid “Boost/Unlock/Discover”.
+- Body: 3–4 sentences; 80–120 words; active, concrete; avoid corporate nouns.
+- Mention booth #42 once.
+- Mention the speaker gift exactly once, in the last sentence only.
+- Use ONE hook: mirror the vocabulary in {hook}, map it to a specific workflow + single KPI.
+- Only use “Digital Twin” if {category} is Engineering/Design-Build OR the hook contains it.
 
-Tone & constraints
-- Subject ≤ 50 chars preferred (≤ 60 hard cap). No colons. Avoid “Boost/Unlock/Discover”.
-- Body: 3–4 sentences; 80–120 words; active, concrete.
-- Include booth #42 exactly once.
-- Mention ONE specific application relevant to the role.
-- Only use “Digital Twin” if present in {specific_detail} or persona is Engineering/Design-Build.
+HARD BANS (must not appear, case-insensitive)
+- “you’ll appreciate”, “streamline progress tracking”, “Looking forward to connecting”
+- “reduce site visits” (without a number), “combines drone and 360”
+- “platform”, “solution”, “transform”, “revolutionise”
+- Exclamation marks
 
-Process (do this silently): Generate three variants internally, select the best, then discard the others.
+VARIATION (do silently)
+- Choose an opening that is role/KPI-led (not a compliment).
+- Vary verbs; avoid filler (“workflow”, “leverage”) unless necessary.
 
-Return ONLY the final choice as JSON:
-{ "subject": string, "body": string }
+SELF-CHECK (do silently before returning)
+- Subject length ≤ 60.
+- Body is 3–4 sentences and 80–120 words.
+- Booth mentioned once.
+- Gift mentioned once and only in the final sentence.
+- Exactly one problem + one KPI are implied.
+- No hard-ban phrases present.
+- If any check fails, fix and re-check.
+
+OUTPUT (JSON only, no prose)
+Return exactly this JSON object and nothing else, conforming to the schema:
+
+{
+  "subject": string,
+  "body": string
+}
+
+SCHEMA (for structured output)
+type: object
+additionalProperties: false
+properties:
+  subject:
+    type: string
+  body:
+    type: string
+required: ["subject", "body"]
 """
 
 
 def _pick_specific_detail(sp: Speaker) -> str:
-    """Choose one concrete detail from talk titles or bio, kept short.
-    Preference: first talk title; otherwise, a concise bio fragment.
+    """Choose one concrete detail from session descriptions, talk titles, or bio.
+    Preference: session description (most detailed), then talk title, then bio fragment.
     """
-    # Prefer a talk title if present
+    # Prefer session description if present (most detailed context)
+    if sp.session_descriptions:
+        desc = (sp.session_descriptions[0] or "").strip()
+        desc = re.sub(r"\s+", " ", desc)
+        # Keep it concise but informative - first ~150 chars or first sentence
+        if "." in desc[:200]:
+            first_sentence = desc.split(".")[0] + "."
+            return first_sentence[:200]
+        return desc[:200]
+    
+    # Fall back to talk title if present
     if sp.talk_titles:
         t = (sp.talk_titles[0] or "").strip()
         return re.sub(r"\s+", " ", t)[:120]
 
-    # Fall back to a short, specific-looking snippet from the bio
+    # Finally, fall back to a short, specific-looking snippet from the bio
     if sp.bio:
         bio = re.sub(r"\s+", " ", sp.bio.strip())
         # Try to capture a clause mentioning a project/work/package
@@ -83,7 +127,7 @@ class Emailer:
         schema = EmailDraft.model_json_schema()
         specific_detail = _pick_specific_detail(sp)
         category_value = (sp.company_category.value if sp.company_category else "Builder")
-        # Avoid Python .format on the whole template to preserve literal JSON braces
+
         sys = (
             SYSTEM
             .replace("{category}", category_value)

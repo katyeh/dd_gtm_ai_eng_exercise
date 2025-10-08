@@ -82,13 +82,24 @@ def extract_session_links_from_speaker(html: str) -> list[str]:
             out.append(u)
     return out
 
-def parse_session_title(html: str) -> str | None:
+def parse_session_detail(html: str) -> dict[str, str | None]:
     """
-    Extract a session title from the session page.
+    Extract session title and description from the session page.
+    
+    Returns a dict with 'title' and 'description' keys.
     """
     soup = BeautifulSoup(html, "html.parser")
-    h1 = soup.select_one("h1, h2, .session-title")
+    
+    # Extract title from h1
+    title = None
+    h1 = soup.select_one("h1")
     if h1:
-        title = h1.get_text(strip=True)
-        return title or None
-    return None
+        title = _clean(h1.get_text(strip=True))
+    
+    # Extract description from .session-meta-main
+    description = None
+    desc_elem = soup.select_one(".session-meta-main")
+    if desc_elem:
+        description = _clean(desc_elem.get_text(" ", strip=True))
+    
+    return {"title": title, "description": description}

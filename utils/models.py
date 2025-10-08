@@ -10,6 +10,7 @@ class Speaker(BaseModel):
     company: str | None = None
     bio: str | None = None
     talk_titles: list[str] = Field(default_factory=list)
+    session_descriptions: list[str] = Field(default_factory=list)
     url: str | None = None
     company_category: CompanyCategory | None = None
 

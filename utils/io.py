@@ -1,8 +1,8 @@
-import csv
-import json, pandas as pd
+import json
+import pandas as pd
 from typing import Any
 import aiofiles
-from .models import RowOut
+from .models import RowOut, Speaker
 from typing import Iterable
 import os
 
@@ -17,46 +17,50 @@ def load_jsonl(path: str) -> list[dict]:
     except FileNotFoundError:
         return []
 
-
 def write_csv(path: str, rows: Iterable[RowOut]) -> None:
-    """Append rows to CSV by default, writing a header if the file is new/empty.
-
-    Also de-duplicates against existing rows by (Speaker Name, Speaker Company).
-    """
-    # Determine whether we need to write the header
-    need_header = True
-    existing_keys: set[tuple[str | None, str | None]] = set()
+    """Write rows to CSV using pandas for cleaner deduplication."""
+    # Convert RowOut objects to dicts for DataFrame
+    new_data = [
+        {
+            "Speaker Name": r.speaker_name,
+            "Speaker Title": r.speaker_title,
+            "Speaker Company": r.speaker_company,
+            "Company Category": r.company_category.value if hasattr(r.company_category, 'value') else str(r.company_category),
+            "Email Subject": r.email_subject,
+            "Email Body": r.email_body,
+        }
+        for r in rows
+    ]
+    
+    if not new_data:
+        return
+    
+    new_df = pd.DataFrame(new_data)
+    
+    # If file exists, load and merge with deduplication
     if os.path.exists(path) and os.path.getsize(path) > 0:
-        need_header = False
-        # Build a set of existing keys to avoid duplicates on append
-        try:
-            with open(path, "r", newline="", encoding="utf-8") as f_in:
-                r = csv.DictReader(f_in)
-                for rrow in r:
-                    existing_keys.add((rrow.get("Speaker Name"), rrow.get("Speaker Company")))
-        except Exception:
-            existing_keys = set()
+        existing_df = pd.read_csv(path)
+        combined_df = pd.concat([existing_df, new_df], ignore_index=True)
 
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.writer(f)
-        if need_header:
-            w.writerow([
-                "Speaker Name",
-                "Speaker Title",
-                "Speaker Company",
-                "Company Category",
-                "Email Subject",
-                "Email Body",
-            ])
-        for row in rows:
-            key = (row.speaker_name, row.speaker_company)
-            if key in existing_keys:
-                continue
-            w.writerow([
-                row.speaker_name,
-                row.speaker_title,
-                row.speaker_company,
-                row.company_category,
-                row.email_subject,
-                row.email_body,
-            ])
+        combined_df = combined_df.drop_duplicates(
+            subset=["Speaker Name", "Speaker Company"],
+            keep="first"
+        )
+        combined_df.to_csv(path, index=False)
+    else:
+        new_df.to_csv(path, index=False)
+
+
+def filter_speakers_missing_fields(speakers: list[Speaker], required_fields: list[str]) -> list[Speaker]:
+    """Filter speakers that are missing any of the specified required fields.
+    
+    Useful for batch processing - identify speakers that need enrichment.
+    
+    Example:
+        missing = filter_speakers_missing_fields(speakers, ["company", "title"])
+        # Returns speakers where company OR title is None/empty
+    """
+    df = pd.DataFrame([s.model_dump() for s in speakers])
+    mask = df[required_fields].isna().any(axis=1)
+    missing_indices = df[mask].index.tolist()
+    return [speakers[i] for i in missing_indices]

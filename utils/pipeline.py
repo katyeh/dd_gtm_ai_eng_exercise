@@ -1,8 +1,8 @@
 import os
 import asyncio
 from .http import Http
-from .parsing import parse_index, parse_speaker_detail, BASE, extract_session_links_from_speaker, parse_session_title
-from .io import append_jsonl, load_jsonl, write_csv
+from .parsing import parse_index, parse_speaker_detail, BASE, extract_session_links_from_speaker, parse_session_detail
+from .io import append_jsonl, load_jsonl, write_csv, filter_speakers_missing_fields
 from .models import Speaker, CompanyCategory, RowOut
 from .emailgen import Emailer
 
@@ -46,9 +46,11 @@ class Pipeline:
                 session_links = extract_session_links_from_speaker(html)
                 if session_links:
                     session_html = await http.fetch(session_links[0])
-                    title = parse_session_title(session_html)
-                    if title:
-                        sp.talk_titles.append(title)
+                    session_data = parse_session_detail(session_html)
+                    if session_data["title"]:
+                        sp.talk_titles.append(session_data["title"])
+                    if session_data["description"]:
+                        sp.session_descriptions.append(session_data["description"])
                 await append_jsonl("in/speakers_enriched.jsonl", sp.model_dump()) 
                 out.append(sp)
                 print(f"[scrape] {len(out)+len(done_urls)} processed", flush=True)
@@ -58,6 +60,10 @@ class Pipeline:
 
     async def categorize_all(self, speakers: list[Speaker], llm_concurrency: int = 6) -> list[Speaker]:
         """Assign CompanyCategory via heuristics → LLM; checkpoint results."""
+        incomplete = filter_speakers_missing_fields(speakers, ["company"])
+        if incomplete:
+            print(f"[categorize] Skipping {len(incomplete)} speakers without company data")
+        speakers = [s for s in speakers if s not in incomplete]
         done = {d.get("url") for d in load_jsonl("in/speakers_categorized.jsonl")} # Skip reprocessing speakers that were categorized in a previous run
         sem = asyncio.Semaphore(llm_concurrency) # Limits how many LLM request run at once; prevents rate-limit spikes
         # local import avoids cyclic imports if any
