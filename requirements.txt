@@ -1,0 +1,10 @@
+aiohttp
+aiofiles
+beautifulsoup4
+pydantic>=2
+tenacity
+python-dotenv
+pandas
+tqdm
+pytest
+openai>=1.40.0
