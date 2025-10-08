@@ -24,12 +24,12 @@ pip install -r requirements.txt
 
 ### 3) Configure environment
 
-Create a `.env` file in the repo root with your OpenAI credentials (the app uses Structured Outputs via the OpenAI Responses API):
+Create a `.env` file in the repo root with your OpenAI credentials (the app uses Structured Outputs via the OpenAI API):
 
 ```bash
 echo "OPENAI_API_KEY=sk-..." > .env
-echo "OPENAI_MODEL=gpt-4.1-mini" >> .env   # optional; this is the default
-echo "CONCURRENCY=8" >> .env               # optional HTTP concurrency default
+echo "OPENAI_MODEL=gpt-4o-mini" >> .env   # optional; this is the default
+echo "CONCURRENCY=8" >> .env              # optional HTTP concurrency default
 ```
 
 ### 4) Run
@@ -127,8 +127,8 @@ pytest -q
 - Idempotency
   - Scraper and categorizer skip URLs already present in their respective checkpoint files.
 - OpenAI usage
-  - The app uses the OpenAI Responses API with Structured Outputs to parse JSON directly into Pydantic models.
-  - Configure `OPENAI_API_KEY` in `.env`. `OPENAI_MODEL` is optional; defaults to `gpt-4.1-mini`.
+  - The app uses the OpenAI API with Structured Outputs to parse JSON directly into Pydantic models.
+  - Configure `OPENAI_API_KEY` in `.env`. `OPENAI_MODEL` is optional; defaults to `gpt-4o-mini`.
 
 ## Troubleshooting
 

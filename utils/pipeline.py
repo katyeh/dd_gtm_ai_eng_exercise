@@ -1,7 +1,7 @@
 import os
 import asyncio
 from .http import Http
-from .parsing import parse_index, parse_speaker_detail, BASE, SpeakerSeed, extract_session_links_from_speaker, parse_session_title
+from .parsing import parse_index, parse_speaker_detail, BASE, extract_session_links_from_speaker, parse_session_title
 from .io import append_jsonl, load_jsonl, write_csv
 from .models import Speaker, CompanyCategory, RowOut
 from .emailgen import Emailer
@@ -22,13 +22,6 @@ def _targets_from_str(s: str | None) -> set[CompanyCategory]:
     out.discard(CompanyCategory.competitor)  # never email competitors
     return out or {CompanyCategory.builder, CompanyCategory.owner}
 
-async def _parse_detail_with_fallbacks(html: str, url: str, seed: SpeakerSeed) -> Speaker:
-    sp = parse_speaker_detail(html, url, fallback_name=seed.name)
-    # Seed any missing fields from the index card
-    sp.title = sp.title or seed.title
-    sp.company = sp.company or seed.company
-    return sp
-
 class Pipeline:
     def __init__(self, http_concurrency: int = 8):
         # Accept the CLI arg and create the HTTP semaphore
@@ -37,18 +30,18 @@ class Pipeline:
     async def scrape_all(self, limit: int | None = None) -> list[Speaker]:
         async with Http(self.http_sem) as http:
             idx_html = await http.fetch(INDEX)
-            seeds = parse_index(idx_html)
+            urls = parse_index(idx_html)
             if limit:
-                seeds = seeds[:limit]
+                urls = urls[:limit]
 
             done_urls = {d.get("url") for d in load_jsonl("in/speakers_enriched.jsonl")}
             out: list[Speaker] = []
 
-            async def one(seed: SpeakerSeed):
-                if seed.url in done_urls:
+            async def one(url: str):
+                if url in done_urls:
                     return
-                html = await http.fetch(seed.url)
-                sp = await _parse_detail_with_fallbacks(html, seed.url, seed)
+                html = await http.fetch(url)
+                sp = parse_speaker_detail(html, url)
 
                 session_links = extract_session_links_from_speaker(html)
                 if session_links:
@@ -60,7 +53,7 @@ class Pipeline:
                 out.append(sp)
                 print(f"[scrape] {len(out)+len(done_urls)} processed", flush=True)
 
-            await asyncio.gather(*(one(s) for s in seeds))
+            await asyncio.gather(*(one(url) for url in urls))
             return out
 
     async def categorize_all(self, speakers: list[Speaker], llm_concurrency: int = 6) -> list[Speaker]:
