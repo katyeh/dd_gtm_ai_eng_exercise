@@ -64,6 +64,9 @@ def parse_speaker_detail(html: str, url: str) -> Speaker:
     bio_div = soup.select_one(".speaker-bio")
     if bio_div:
         bio = _clean(bio_div.get_text(" ", strip=True))
+        if bio:
+            # Strip a leading "Biography" label if present
+            bio = re.sub(r"^\s*Biography:?\s+", "", bio, flags=re.I)
 
     return Speaker(name=name, title=title, company=company, bio=bio, talk_titles=[], url=url)
 

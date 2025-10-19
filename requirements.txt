@@ -7,4 +7,5 @@ python-dotenv
 pandas
 tqdm
 pytest
+pytest-asyncio
 openai>=1.40.0

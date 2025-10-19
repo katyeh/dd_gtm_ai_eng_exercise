@@ -3,7 +3,7 @@ import asyncio
 from .http import Http
 from .parsing import parse_index, parse_speaker_detail, BASE, extract_session_links_from_speaker, parse_session_detail
 from .io import append_jsonl, load_jsonl, write_csv, filter_speakers_missing_fields
-from .models import Speaker, CompanyCategory, RowOut
+from .models import Speaker, CompanyCategory, RowOut, Session
 from .emailgen import Emailer
 
 INDEX = f"{BASE}/all-speakers/"
@@ -45,12 +45,17 @@ class Pipeline:
 
                 session_links = extract_session_links_from_speaker(html)
                 if session_links:
-                    session_html = await http.fetch(session_links[0])
-                    session_data = parse_session_detail(session_html)
-                    if session_data["title"]:
-                        sp.talk_titles.append(session_data["title"])
-                    if session_data["description"]:
-                        sp.session_descriptions.append(session_data["description"])
+                    # Fetch all session pages for this speaker
+                    pages = await asyncio.gather(*(http.fetch(u) for u in session_links))
+                    for u, sh in zip(session_links, pages):
+                        sd = parse_session_detail(sh)
+                        sess = Session(title=sd.get("title"), description=sd.get("description"), url=u)
+                        sp.sessions.append(sess)
+                        # Back-compat population for existing fields
+                        if sess.title:
+                            sp.talk_titles.append(sess.title)
+                        if sess.description:
+                            sp.session_descriptions.append(sess.description)
                 await append_jsonl("in/speakers_enriched.jsonl", sp.model_dump()) 
                 out.append(sp)
                 print(f"[scrape] {len(out)+len(done_urls)} processed", flush=True)

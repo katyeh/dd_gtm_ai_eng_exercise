@@ -6,7 +6,7 @@ from .models import Speaker, CompanyCategory, Categorization
 
 # Cheap heuristics first
 _COMPETITOR = ("pix4d","propeller","openspace","matterport","trimble","bentley","navvis","skydio","dji","reconstruct","sitevision","contextcapture","synchro")
-_BUILDER    = ("contractor","construction","builders","design-build","paving","mep","civil","earthworks","gc ")
+_BUILDER    = ("contractor","construction","builders","design-build","paving","mep","civil","earthworks","gc ","skanska")
 _OWNER      = ("airport","rail","transit","authority","council","utility","energy","developer","reit","university","hospital","nhs","network rail","national highways")
 _PARTNER    = ("systems","consulting","integrator","reseller","software","platform","oem","marketplace","implementation")
 
@@ -37,7 +37,8 @@ Return ONLY JSON exactly matching the provided schema.
 class Categorizer:
     def __init__(self, sem: asyncio.Semaphore, model: str | None = None):
         self.sem = sem
-        self.client = AsyncOpenAI()
+        # Lazily initialize the OpenAI client only if we actually call the LLM
+        self.client: AsyncOpenAI | None = None
         self.model = model or os.getenv("OPENAI_MODEL","gpt-4.1-mini")
 
     @retry(stop=stop_after_attempt(5), wait=wait_exponential(0.5,10)+wait_random(0,0.5))
@@ -46,6 +47,8 @@ class Categorizer:
             "name": sp.name, "title": sp.title, "company": sp.company,
             "bio": sp.bio, "talk_titles": sp.talk_titles
         }, ensure_ascii=False)
+        if self.client is None:
+            self.client = AsyncOpenAI()
         async with self.sem:
             r = await self.client.responses.parse(
                 model=self.model,

@@ -7,6 +7,8 @@ from typing import Iterable
 import os
 
 async def append_jsonl(path: str, obj: dict[str, Any]) -> None:
+    # Ensure parent directory exists for first-run resilience
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     async with aiofiles.open(path, "a", encoding="utf-8") as f:
         await f.write(json.dumps(obj, ensure_ascii=False) + "\n")
 

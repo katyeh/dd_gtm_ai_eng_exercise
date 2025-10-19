@@ -4,6 +4,11 @@ from pydantic import BaseModel, Field
 class CompanyCategory(str, Enum):
     builder="Builder"; owner="Owner"; partner="Partner"; competitor="Competitor"; other="Other"
 
+class Session(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    url: str | None = None
+
 class Speaker(BaseModel):
     name: str
     title: str | None = None
@@ -11,6 +16,7 @@ class Speaker(BaseModel):
     bio: str | None = None
     talk_titles: list[str] = Field(default_factory=list)
     session_descriptions: list[str] = Field(default_factory=list)
+    sessions: list[Session] = Field(default_factory=list)
     url: str | None = None
     company_category: CompanyCategory | None = None
 

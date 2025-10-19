@@ -16,6 +16,9 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     async def run():
+        # Ensure working folders exist for first-run resilience
+        os.makedirs("in", exist_ok=True)
+        os.makedirs("out", exist_ok=True)
         p = Pipeline(http_concurrency=args.http)
         rows = await p.run(limit=args.limit, llm_c=args.llm, stage=args.stage, targets=args.targets, dry_run=args.dry_run)
         print(f"✓ Wrote out/email_list.csv with {len(rows)} rows (Builder/Owner only).")
